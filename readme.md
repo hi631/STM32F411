@@ -8,10 +8,11 @@ STM32F411でVGA(640x480)
 <BR>(あれ、最下行が表示されてない様な)
 ![Image 1](img/testdisp.jpg)
 <BR>ハードはBlackPillをVGAコネクタに、hsVsは直付け、RGBは500オームが入ってます。。
-<BR> HS <- PA6
-<BR> VS <- PB1
-<BR> R  <- PA7
-<BR> G  <- PA1
-<BR> B  <- PB8
+<BR>  HS  <- PA6
+<BR>  VS  <- PB1
+<BR>  R   <- PA7
+<BR>  G   <- PA1
+<BR>  B   <- PB8
+<BR>  GND <- GND
 ![Image 1](img/Blackpill.jpg)
 
