@@ -86,6 +86,8 @@ extern void DrawStr();
 extern void DrawLine();
 extern void DrawRect();
 extern void FillRect();
+extern void DrawCircle();
+extern void FillCircle();
 extern void FillCircle();
 extern uint8_t dotbf0[120];
 extern uint8_t dotbf1[120];
@@ -155,11 +157,17 @@ int main(void)
 
   clr_vram();
   for(int i=0; i<40; i++)
-	  FillRect(100+i*10,0,100+i*10+9,479,(i%6)+1);
+    FillRect(100+i*10,0,100+i*10+9,479,(i%6)+1);
+  int x,y;
+  for(int i=0; i<10; i++){
+	  x=100+i*20;y=10+i*40; FillRect(x,y,x+100,y+100,(i%6)+1);
+	  x=300+i*20;y=100+i*30; FillCircle(x,y,80,(i%6)+1);
+  }
   char cbuf[128];
-  for(int y=1; y<25; y++){
+  for(int y=1; y<30; y++){
 	  sprintf(cbuf, "%02d.ABCDEFG", y);
-	  DrawStr(y,y,"          ",0);DrawStr(y,y,cbuf,(y%6)+1);
+	  DrawStr(y,y,"          ",0);	// 文字エリアをクリア
+	  DrawStr(y,y,cbuf,(y%6)+1);	// 文字ORで書いている
   }
 
   int ct = 0;

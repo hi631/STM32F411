@@ -56,13 +56,11 @@ void DrawPixel(int16_t x, int16_t y, uint8_t col) {
 	uint8_t bytp,bitp;
 	bytp = x >> 3; bitp = 0x80 >> (x & 7);
 	if((col & 1)!=0) { vramr[y*80+bytp] = vramr[y*80+bytp] | bitp; }
+	else 		     { vramr[y*80+bytp] = vramr[y*80+bytp] & ~bitp;}
 	if((col & 2)!=0) { vramg[y*80+bytp] = vramg[y*80+bytp] | bitp; }
+	else             { vramg[y*80+bytp] = vramg[y*80+bytp] & ~bitp;}
 	if((col & 4)!=0) { vramb[y*80+bytp] = vramb[y*80+bytp] | bitp; }
-	if(col==0) {
-		vramr[y*80+bytp] = vramr[y*80+bytp] & ~bitp;
-		vramg[y*80+bytp] = vramg[y*80+bytp] & ~bitp;
-		vramb[y*80+bytp] = vramb[y*80+bytp] & ~bitp;
-	}
+	else             { vramb[y*80+bytp] = vramb[y*80+bytp] & ~bitp;}
 }
 
 void DrawLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint8_t c) {
@@ -105,12 +103,12 @@ void DrawRect(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1, uint8_t col) {
 	DrawLine(x0,y1,x0,y0,col);
 }
 
-void FillRect(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2, uint8_t color) {
+void FillRect(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2, uint8_t col) {
     if((x1 >= VGA_WIDTH) || (y1 >= VGA_HEIGHT)) return;	    // clipping
     if(x2 >= VGA_WIDTH) x2 = VGA_WIDTH-1;
     if(y2 >= VGA_HEIGHT) y2 = VGA_HEIGHT-1;
     for(int yy = y1; yy <= y2; yy++) {
-    	DrawLine(x1,yy,x2,yy,color);
+    	DrawLine(x1,yy,x2,yy,col);
     }
 }
 
