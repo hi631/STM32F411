@@ -25,6 +25,7 @@ void clr_vram(){
 void DrawChar(int xp, int yp, char code, uint8_t col){
 	int i;
 	yp=yp*16;
+	if(xp>=80) return;	// Error
 	if((col & 1)!=0)
 		for( i=0; i<8; i++){
 			vramr[(yp+i*2  )*80+xp] = fontptn[code*8+i];
@@ -46,6 +47,12 @@ void DrawChar(int xp, int yp, char code, uint8_t col){
 			vramg[(yp+i*2  )*80+xp] = 0; vramg[(yp+i*2+1)*80+xp] = 0;
 			vramb[(yp+i*2  )*80+xp] = 0; vramb[(yp+i*2+1)*80+xp] = 0;
 		}
+	//
+	if(yp==79) {	// Dot639 over
+		vramr[yp*80+79] &= 0xf7; vramr[yp*80+79] &= 0xfe;
+		vramg[yp*80+79] &= 0xf7; vramg[yp*80+79] &= 0xfe;
+		vramb[yp*80+79] &= 0xf7; vramb[yp*80+79] &= 0xfe;
+	}
 }
 void DrawStr(uint16_t xp, uint16_t yp, char msg[], uint8_t col){
 	int mp = 0;
@@ -54,6 +61,7 @@ void DrawStr(uint16_t xp, uint16_t yp, char msg[], uint8_t col){
 
 void DrawPixel(int16_t x, int16_t y, uint8_t col) {
 	uint8_t bytp,bitp;
+	if(x>=640 || y>=480) return;
 	bytp = x >> 3; bitp = 0x80 >> (x & 7);
 	if((col & 1)!=0) { vramr[y*80+bytp] = vramr[y*80+bytp] | bitp; }
 	else 		     { vramr[y*80+bytp] = vramr[y*80+bytp] & ~bitp;}

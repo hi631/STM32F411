@@ -42,8 +42,6 @@
 
 /* Private variables ---------------------------------------------------------*/
 SPI_HandleTypeDef hspi1;
-SPI_HandleTypeDef hspi2;
-SPI_HandleTypeDef hspi3;
 SPI_HandleTypeDef hspi4;
 SPI_HandleTypeDef hspi5;
 
@@ -70,8 +68,6 @@ static void MX_TIM2_Init(void);
 static void MX_SPI4_Init(void);
 static void MX_SPI5_Init(void);
 static void MX_TIM3_Init(void);
-static void MX_SPI2_Init(void);
-static void MX_SPI3_Init(void);
 static void MX_USB_OTG_FS_HCD_Init(void);
 /* USER CODE BEGIN PFP */
 
@@ -131,8 +127,6 @@ int main(void)
   MX_SPI4_Init();
   MX_SPI5_Init();
   MX_TIM3_Init();
-  MX_SPI2_Init();
-  MX_SPI3_Init();
   MX_USB_OTG_FS_HCD_Init();
   /* USER CODE BEGIN 2 */
   /* USER CODE END 2 */
@@ -142,8 +136,6 @@ int main(void)
 
   // SPIを有効化
   __HAL_SPI_ENABLE(&hspi1);	// (PA7)
-  __HAL_SPI_ENABLE(&hspi2);	// (PB15)
-  __HAL_SPI_ENABLE(&hspi3);	// (PB5 )
   __HAL_SPI_ENABLE(&hspi4);	// (PA1)
   __HAL_SPI_ENABLE(&hspi5);	// (PB8)
   // タイマースタート
@@ -160,25 +152,19 @@ int main(void)
     FillRect(100+i*10,0,100+i*10+9,479,(i%6)+1);
   int x,y;
   for(int i=0; i<10; i++){
-	  x=100+i*20;y=10+i*40; FillRect(x,y,x+100,y+100,(i%6)+1);
-	  x=300+i*20;y=100+i*30; FillCircle(x,y,80,(i%6)+1);
+	  x=140+i*24;y=10+i*40; FillRect(x,y,x+100,y+100,(i%6)+1);
+	  x=400+i*20;y=80+i*30; FillCircle(x,y,80,(i%6)+1);
   }
   char cbuf[128];
-  for(int y=1; y<30; y++){
-	  sprintf(cbuf, "%02d.ABCDEFG", y);
-	  DrawStr(y,y,"          ",0);	// 文字エリアをクリア
-	  DrawStr(y,y,cbuf,(y%6)+1);	// 文字ORで書いている
+  for(int y=0; y<30; y++){
+	  sprintf(cbuf, "%02d.ABCDEFG", y+1);
+	  DrawStr(y+1,y,"          ",0);	// 文字エリアをクリア
+	  DrawStr(y+1,y,cbuf,(y%6)+1);	// 文字ORで書いている
   }
-
-  int ct = 0;
   while (1)
   {
-	  HAL_Delay(1);
-	  ct++;
-	  if(ct>100) {
-		  ct = 0;
-	    HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13); // PC13(LED)への出力を反転
-	  }
+	  HAL_Delay(1000);
+	  HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13); // PC13(LED)への出力を反転
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -266,82 +252,6 @@ static void MX_SPI1_Init(void)
   /* USER CODE BEGIN SPI1_Init 2 */
 
   /* USER CODE END SPI1_Init 2 */
-
-}
-
-/**
-  * @brief SPI2 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_SPI2_Init(void)
-{
-
-  /* USER CODE BEGIN SPI2_Init 0 */
-
-  /* USER CODE END SPI2_Init 0 */
-
-  /* USER CODE BEGIN SPI2_Init 1 */
-
-  /* USER CODE END SPI2_Init 1 */
-  /* SPI2 parameter configuration*/
-  hspi2.Instance = SPI2;
-  hspi2.Init.Mode = SPI_MODE_MASTER;
-  hspi2.Init.Direction = SPI_DIRECTION_2LINES;
-  hspi2.Init.DataSize = SPI_DATASIZE_8BIT;
-  hspi2.Init.CLKPolarity = SPI_POLARITY_LOW;
-  hspi2.Init.CLKPhase = SPI_PHASE_1EDGE;
-  hspi2.Init.NSS = SPI_NSS_SOFT;
-  hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
-  hspi2.Init.FirstBit = SPI_FIRSTBIT_MSB;
-  hspi2.Init.TIMode = SPI_TIMODE_DISABLE;
-  hspi2.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
-  hspi2.Init.CRCPolynomial = 10;
-  if (HAL_SPI_Init(&hspi2) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN SPI2_Init 2 */
-
-  /* USER CODE END SPI2_Init 2 */
-
-}
-
-/**
-  * @brief SPI3 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_SPI3_Init(void)
-{
-
-  /* USER CODE BEGIN SPI3_Init 0 */
-
-  /* USER CODE END SPI3_Init 0 */
-
-  /* USER CODE BEGIN SPI3_Init 1 */
-
-  /* USER CODE END SPI3_Init 1 */
-  /* SPI3 parameter configuration*/
-  hspi3.Instance = SPI3;
-  hspi3.Init.Mode = SPI_MODE_MASTER;
-  hspi3.Init.Direction = SPI_DIRECTION_2LINES;
-  hspi3.Init.DataSize = SPI_DATASIZE_8BIT;
-  hspi3.Init.CLKPolarity = SPI_POLARITY_LOW;
-  hspi3.Init.CLKPhase = SPI_PHASE_1EDGE;
-  hspi3.Init.NSS = SPI_NSS_SOFT;
-  hspi3.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
-  hspi3.Init.FirstBit = SPI_FIRSTBIT_MSB;
-  hspi3.Init.TIMode = SPI_TIMODE_DISABLE;
-  hspi3.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
-  hspi3.Init.CRCPolynomial = 10;
-  if (HAL_SPI_Init(&hspi3) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN SPI3_Init 2 */
-
-  /* USER CODE END SPI3_Init 2 */
 
 }
 
@@ -570,11 +480,6 @@ static void MX_TIM2_Init(void)
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
   if (HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sConfigOC.Pulse = 2798;
-  if (HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
   {
     Error_Handler();
   }

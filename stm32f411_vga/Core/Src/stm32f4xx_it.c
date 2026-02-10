@@ -237,28 +237,29 @@ void TIM2_IRQHandler(void)
 	TIM1->CNT = 0;	// Timer1をTimer2に同期(無理やり)
 	if(hs_ct++>524) hs_ct = 0;	// 行カウンタ
 
-	// Vsyncを作成
-	if(hs_ct==0) HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, GPIO_PIN_RESET);	//Vsync(PB1)
-	if(hs_ct==2) HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, GPIO_PIN_SET);
 	// DMA起動処理
-	if(hs_ct==22) {
-		// 事前にDMAを一旦停止
-		HAL_DMA_Abort(&hdma_tim1_ch1);
-		HAL_DMA_Abort(&hdma_tim1_ch2);
-		HAL_DMA_Abort(&hdma_tim1_ch3);
-	}
-	if(hs_ct==23) {
+	if(hs_ct==16) {
 		// タイマーによるDMA転送を設定
 		HAL_DMA_Start(&hdma_tim1_ch1, (uint32_t)vramr, (uint32_t)&hspi1.Instance->DR, 80*480);
 		HAL_DMA_Start(&hdma_tim1_ch2, (uint32_t)vramg, (uint32_t)&hspi4.Instance->DR, 80*480);
 		HAL_DMA_Start(&hdma_tim1_ch3, (uint32_t)vramb, (uint32_t)&hspi5.Instance->DR, 80*480);
 	}
-	if(hs_ct==24) {
+	if(hs_ct==17) {
 		// タイマーにDMA許可(Timer1の動作開始でDMAが始まる)
 		__HAL_TIM_ENABLE_DMA(&htim1, TIM_DMA_CC1);
 		__HAL_TIM_ENABLE_DMA(&htim1, TIM_DMA_CC2);
 		__HAL_TIM_ENABLE_DMA(&htim1, TIM_DMA_CC3);
 	}
+	// DMA停止(止めとかないと次にスタートしない)
+	if(hs_ct==500) {
+		// DMAを一旦停止
+		HAL_DMA_Abort(&hdma_tim1_ch1);
+		HAL_DMA_Abort(&hdma_tim1_ch2);
+		HAL_DMA_Abort(&hdma_tim1_ch3);
+	}
+	// Vsyncを作成
+	if(hs_ct==522) HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, GPIO_PIN_RESET);	//Vsync(PB1)
+	if(hs_ct==524) HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, GPIO_PIN_SET);
 	// DMAの処理完了待ち(多分)
 	for(int i=0; i<80; i++) ;
 	//HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2, GPIO_PIN_RESET);	// 動作確認用
