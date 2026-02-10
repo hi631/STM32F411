@@ -5,10 +5,10 @@ STM32F411でVGA(640x480)
 <BR>開発環境　：STM32CubeIDE 1.19.0+ST-LINK2
 <BR>ターゲット：BlackPill(STM32F411)
 <BR>こんな感じで表示されます。
-<BR>　※横639ドット目が無効なのは仕様です。
-<BR>　※横７ドット目が行先頭に表示されるのも仕様です。
+<BR>　※クロックを96MHzに設定、表示できないモニターも有るかも。
+<BR>　　96MHzに設定の理由は、USBの利用が念頭にあるため。
 ![Image 1](img/testdisp.jpg)
-<BR>ハードはBlackPillをVGAコネクタに、hsVs信号は直付け、RGB信号は500オームが入ってます。
+<BR>接続はVGAコネクタに、hsVs信号は直付け、RGB信号は500オームが入っている。
 <BR>  HS  <- PA6
 <BR>  VS  <- PB1
 <BR>  R   <- PA7

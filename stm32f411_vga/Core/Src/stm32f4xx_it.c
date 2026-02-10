@@ -240,9 +240,9 @@ void TIM2_IRQHandler(void)
 	// DMA起動処理
 	if(hs_ct==16) {
 		// タイマーによるDMA転送を設定
-		HAL_DMA_Start(&hdma_tim1_ch1, (uint32_t)vramr, (uint32_t)&hspi1.Instance->DR, 80*480);
-		HAL_DMA_Start(&hdma_tim1_ch2, (uint32_t)vramg, (uint32_t)&hspi4.Instance->DR, 80*480);
-		HAL_DMA_Start(&hdma_tim1_ch3, (uint32_t)vramb, (uint32_t)&hspi5.Instance->DR, 80*480);
+		HAL_DMA_Start(&hdma_tim1_ch1, (uint32_t)vramr, (uint32_t)&hspi1.Instance->DR, 82*480);
+		HAL_DMA_Start(&hdma_tim1_ch2, (uint32_t)vramg, (uint32_t)&hspi4.Instance->DR, 82*480);
+		HAL_DMA_Start(&hdma_tim1_ch3, (uint32_t)vramb, (uint32_t)&hspi5.Instance->DR, 82*480);
 	}
 	if(hs_ct==17) {
 		// タイマーにDMA許可(Timer1の動作開始でDMAが始まる)

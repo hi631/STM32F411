@@ -6,7 +6,7 @@
 #define uint32_t unsigned int
 #define VGA_WIDTH  640
 #define VGA_HEIGHT 480
-#define MXB 82	// X方向の最大バイト数(FPとEPを追加)
+#define MXB 80	// X方向の最大バイト数
 #define MYB 480	// Y方向の最大ライン数
 uint8_t vramr[MXB*MYB] __attribute__((aligned(32)));
 uint8_t vramg[MXB*MYB] __attribute__((aligned(32)));
@@ -24,8 +24,8 @@ void clr_vram(){
 
 void DrawChar(int xp, int yp, char code, uint8_t col){
 	int i;
-	if(xp>=80 || yp>=30) return;	// Error
-	xp=xp+1; yp=yp*16;
+	yp=yp*16;
+	if(xp>=80) return;	// Error
 	if((col & 1)!=0)
 		for( i=0; i<8; i++){
 			vramr[(yp+i*2  )*MXB+xp] = fontptn[code*8+i];
@@ -43,9 +43,9 @@ void DrawChar(int xp, int yp, char code, uint8_t col){
 		}
 	if(col==0)
 		for( i=0; i<8; i++){
-			vramr[(yp+i*2)*MXB+xp] = 0; vramr[(yp+i*2+1)*MXB+xp] = 0;
-			vramg[(yp+i*2)*MXB+xp] = 0; vramg[(yp+i*2+1)*MXB+xp] = 0;
-			vramb[(yp+i*2)*MXB+xp] = 0; vramb[(yp+i*2+1)*MXB+xp] = 0;
+			vramr[(yp+i*2  )*MXB+xp] = 0; vramr[(yp+i*2+1)*MXB+xp] = 0;
+			vramg[(yp+i*2  )*MXB+xp] = 0; vramg[(yp+i*2+1)*MXB+xp] = 0;
+			vramb[(yp+i*2  )*MXB+xp] = 0; vramb[(yp+i*2+1)*MXB+xp] = 0;
 		}
 	//
 	//if(yp==79) {	// Dot639 over
@@ -62,13 +62,13 @@ void DrawStr(uint16_t xp, uint16_t yp, char msg[], uint8_t col){
 void DrawPixel(int16_t x, int16_t y, uint8_t col) {
 	uint8_t bytp,bitp;
 	if(x>=VGA_WIDTH || y>=VGA_HEIGHT) return;
-	bytp = (x >> 3)+1; bitp = 0x80 >> (x & 7);
-	if((col & 1)!=0) { vramr[y*MXB+bytp] |= bitp; }
-	else 		     { vramr[y*MXB+bytp] &= ~bitp;}
-	if((col & 2)!=0) { vramg[y*MXB+bytp] |= bitp; }
-	else             { vramg[y*MXB+bytp] &= ~bitp;}
-	if((col & 4)!=0) { vramb[y*MXB+bytp] |= bitp; }
-	else             { vramb[y*MXB+bytp] &= ~bitp;}
+	bytp = x >> 3; bitp = 0x80 >> (x & 7);
+	if((col & 1)!=0) { vramr[y*MXB+bytp] = vramr[y*MXB+bytp] | bitp; }
+	else 		     { vramr[y*MXB+bytp] = vramr[y*MXB+bytp] & ~bitp;}
+	if((col & 2)!=0) { vramg[y*MXB+bytp] = vramg[y*MXB+bytp] | bitp; }
+	else             { vramg[y*MXB+bytp] = vramg[y*MXB+bytp] & ~bitp;}
+	if((col & 4)!=0) { vramb[y*MXB+bytp] = vramb[y*MXB+bytp] | bitp; }
+	else             { vramb[y*MXB+bytp] = vramb[y*MXB+bytp] & ~bitp;}
 }
 
 void DrawLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint8_t c) {

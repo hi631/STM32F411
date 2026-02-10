@@ -152,15 +152,19 @@ int main(void)
     FillRect(100+i*10,0,100+i*10+9,479,(i%6)+1);
   int x,y;
   for(int i=0; i<10; i++){
-	  x=140+i*24;y=10+i*40; FillRect(x,y,x+100,y+100,(i%6)+1);
-	  x=400+i*20;y=80+i*30; FillCircle(x,y,80,(i%6)+1);
+	  x=140+i*24;y=10+i*40; FillRect(x,y,x+110,y+110,(i%6)+1);
+	  x=400+i*20;y=80+i*40; FillCircle(x,y,80,(i%6)+1);
   }
   char cbuf[128];
-  for(int y=0; y<30; y++){
-	  sprintf(cbuf, "%02d.ABCDEFG", y+1);
-	  DrawStr(y+1,y,"          ",0);	// 文字エリアをクリア
-	  DrawStr(y+1,y,cbuf,(y%6)+1);	// 文字ORで書いている
+  for(int x=0; x<30; x++){
+	  sprintf(cbuf, "%02d.ABCDEFG", x+1);
+	  DrawStr(x,x,"          ",0);	// 文字エリアをクリア
+	  DrawStr(x,x,cbuf,(x%6)+1);	// 文字ORで書いている
   }
+  DrawStr(74, 0,"79,00>", 2);
+  DrawStr( 0,29,"<00,29", 4);
+  DrawStr(74,29,"79,29>", 7);
+
   while (1)
   {
 	  HAL_Delay(1000);
@@ -443,7 +447,7 @@ static void MX_TIM2_Init(void)
   htim2.Instance = TIM2;
   htim2.Init.Prescaler = 0;
   htim2.Init.CounterMode = TIM_COUNTERMODE_DOWN;
-  htim2.Init.Period = 2688;
+  htim2.Init.Period = 2752;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
@@ -476,7 +480,7 @@ static void MX_TIM2_Init(void)
     Error_Handler();
   }
   sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 2528;
+  sConfigOC.Pulse = 2592;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
   if (HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
