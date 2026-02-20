@@ -367,13 +367,18 @@ void bas_save(short bno, uint32_t *lbuf, short bufl){
 }
 //-----------------------------------------------------------
 void test_vga(){
+	int i, x, y;
 	DrawRect(0, 0, VGA_WIDTH-1, VGA_HEIGHT-1, 1, 0);
-	  for(int i=0; i<40; i++)
+	  for( i=0; i<40; i++)
 		  FillRect(100+i*10,0,100+i*10+9,479,(i%6)+1, 0);
 	  char cbuf[128];
-	  for(int y=1; y<26; y++){
+	  for( y=1; y<26; y++){
 		  sprintf(cbuf, "%02d.ABCDEFG", y);
 		  DrawStr(y,y,"          ",0);DrawStr(y,y,cbuf,(y%6)+1);
+	  }
+	  for(int i=0; i<10; i++){
+		  x=140+i*24;y=10+i*40; FillRect(x,y,x+110,y+110,(i%6)+1, 0);
+		  x=400+i*20;y=80+i*40; FillCircle(x,y,80,(i%6)+1, 0);
 	  }
 	DrawStr( 0, 0,"<00,00", 0x70);
 	DrawStr(74, 0,"79,00>", 0x40);
