@@ -22,10 +22,19 @@
 #include "stm32f4xx_it.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "disp_vga.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN TD */
+extern TIM_HandleTypeDef htim1;
+extern TIM_HandleTypeDef htim2;
+extern TIM_HandleTypeDef htim3;
+extern SPI_HandleTypeDef hspi1;
+extern SPI_HandleTypeDef hspi2;
+extern SPI_HandleTypeDef hspi3;
+extern SPI_HandleTypeDef hspi4;
+extern SPI_HandleTypeDef hspi5;
 
 /* USER CODE END TD */
 
@@ -55,17 +64,14 @@
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
-extern SPI_HandleTypeDef hspi1;
+extern HCD_HandleTypeDef hhcd_USB_OTG_FS;
 extern DMA_HandleTypeDef hdma_tim1_ch1;
 extern DMA_HandleTypeDef hdma_tim1_ch2;
 extern DMA_HandleTypeDef hdma_tim1_ch3;
-extern TIM_HandleTypeDef htim1;
 extern TIM_HandleTypeDef htim2;
+extern TIM_HandleTypeDef htim3;
+extern UART_HandleTypeDef huart1;
 /* USER CODE BEGIN EV */
-extern SPI_HandleTypeDef hspi2;
-extern SPI_HandleTypeDef hspi3;
-extern SPI_HandleTypeDef hspi4;
-extern SPI_HandleTypeDef hspi5;
 extern void set_dotbf();
 extern uint8_t vramr[];
 extern uint8_t vramg[];
@@ -212,20 +218,6 @@ void SysTick_Handler(void)
 /******************************************************************************/
 
 /**
-  * @brief This function handles TIM1 trigger and commutation interrupts and TIM11 global interrupt.
-  */
-void TIM1_TRG_COM_TIM11_IRQHandler(void)
-{
-  /* USER CODE BEGIN TIM1_TRG_COM_TIM11_IRQn 0 */
-
-  /* USER CODE END TIM1_TRG_COM_TIM11_IRQn 0 */
-  HAL_TIM_IRQHandler(&htim1);
-  /* USER CODE BEGIN TIM1_TRG_COM_TIM11_IRQn 1 */
-
-  /* USER CODE END TIM1_TRG_COM_TIM11_IRQn 1 */
-}
-
-/**
   * @brief This function handles TIM2 global interrupt.
   */
 void TIM2_IRQHandler(void)
@@ -235,33 +227,30 @@ void TIM2_IRQHandler(void)
 	static int hs_ct = 0;
 	//HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2, GPIO_PIN_SET);	// 動作確認用
 	TIM1->CNT = 0;	// Timer1をTimer2に同期(無理やり)
-	if(hs_ct++>524) hs_ct = 0;	// 行カウンタ
+	if(hs_ct++>VSEND) hs_ct = 0;	// 行カウンタ
 
-	// DMA起動処理
-	if(hs_ct==16) {
-		// タイマーによるDMA転送を設定
-		HAL_DMA_Start(&hdma_tim1_ch1, (uint32_t)vramr, (uint32_t)&hspi1.Instance->DR, 82*480);
-		HAL_DMA_Start(&hdma_tim1_ch2, (uint32_t)vramg, (uint32_t)&hspi4.Instance->DR, 82*480);
-		HAL_DMA_Start(&hdma_tim1_ch3, (uint32_t)vramb, (uint32_t)&hspi5.Instance->DR, 82*480);
-	}
-	if(hs_ct==17) {
-		// タイマーにDMA許可(Timer1の動作開始でDMAが始まる)
-		__HAL_TIM_ENABLE_DMA(&htim1, TIM_DMA_CC1);
-		__HAL_TIM_ENABLE_DMA(&htim1, TIM_DMA_CC2);
-		__HAL_TIM_ENABLE_DMA(&htim1, TIM_DMA_CC3);
-	}
-	// DMA停止(止めとかないと次にスタートしない)
-	if(hs_ct==500) {
-		// DMAを一旦停止
+	if(hs_ct==HDMASTART-2) {
+		// DMAを一旦停止(止めないと次にスタートしない)
 		HAL_DMA_Abort(&hdma_tim1_ch1);
 		HAL_DMA_Abort(&hdma_tim1_ch2);
 		HAL_DMA_Abort(&hdma_tim1_ch3);
 	}
+	if(hs_ct==HDMASTART-1) {
+		// タイマーによるDMA転送を設定
+		HAL_DMA_Start(&hdma_tim1_ch1, (uint32_t)vramr, (uint32_t)&hspi1.Instance->DR, MXB*MYB+VRAMEP);
+		HAL_DMA_Start(&hdma_tim1_ch2, (uint32_t)vramg, (uint32_t)&hspi4.Instance->DR, MXB*MYB+VRAMEP);
+		HAL_DMA_Start(&hdma_tim1_ch3, (uint32_t)vramb, (uint32_t)&hspi5.Instance->DR, MXB*MYB+VRAMEP);
+	}
+	if(hs_ct==HDMASTART) {
+		// タイマーにDMA許可(次のTimer1の動作開始でDMAが始まる)
+		__HAL_TIM_ENABLE_DMA(&htim1, TIM_DMA_CC1);
+		__HAL_TIM_ENABLE_DMA(&htim1, TIM_DMA_CC2);
+		__HAL_TIM_ENABLE_DMA(&htim1, TIM_DMA_CC3);
+	}
 	// Vsyncを作成
-	if(hs_ct==522) HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, GPIO_PIN_RESET);	//Vsync(PB1)
-	if(hs_ct==524) HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, GPIO_PIN_SET);
-	// DMAの処理完了待ち(多分)
-	for(int i=0; i<80; i++) ;
+	if(hs_ct==VSSTART)         HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, GPIO_PIN_RESET);	//Vsync(PB1)
+	if(hs_ct==VSSTART+VSPULSE) HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, GPIO_PIN_SET);
+	//for(int i=0; i<80; i++) ;	// 無くても動く(なぜ？)
 	//HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2, GPIO_PIN_RESET);	// 動作確認用
 
   /* USER CODE END TIM2_IRQn 0 */
@@ -272,17 +261,31 @@ void TIM2_IRQHandler(void)
 }
 
 /**
-  * @brief This function handles SPI1 global interrupt.
+  * @brief This function handles TIM3 global interrupt.
   */
-void SPI1_IRQHandler(void)
+void TIM3_IRQHandler(void)
 {
-  /* USER CODE BEGIN SPI1_IRQn 0 */
+  /* USER CODE BEGIN TIM3_IRQn 0 */
 
-  /* USER CODE END SPI1_IRQn 0 */
-  HAL_SPI_IRQHandler(&hspi1);
-  /* USER CODE BEGIN SPI1_IRQn 1 */
+  /* USER CODE END TIM3_IRQn 0 */
+  HAL_TIM_IRQHandler(&htim3);
+  /* USER CODE BEGIN TIM3_IRQn 1 */
 
-  /* USER CODE END SPI1_IRQn 1 */
+  /* USER CODE END TIM3_IRQn 1 */
+}
+
+/**
+  * @brief This function handles USART1 global interrupt.
+  */
+void USART1_IRQHandler(void)
+{
+  /* USER CODE BEGIN USART1_IRQn 0 */
+
+  /* USER CODE END USART1_IRQn 0 */
+  HAL_UART_IRQHandler(&huart1);
+  /* USER CODE BEGIN USART1_IRQn 1 */
+
+  /* USER CODE END USART1_IRQn 1 */
 }
 
 /**
@@ -311,6 +314,20 @@ void DMA2_Stream2_IRQHandler(void)
   /* USER CODE BEGIN DMA2_Stream2_IRQn 1 */
 
   /* USER CODE END DMA2_Stream2_IRQn 1 */
+}
+
+/**
+  * @brief This function handles USB On The Go FS global interrupt.
+  */
+void OTG_FS_IRQHandler(void)
+{
+  /* USER CODE BEGIN OTG_FS_IRQn 0 */
+
+  /* USER CODE END OTG_FS_IRQn 0 */
+  HAL_HCD_IRQHandler(&hhcd_USB_OTG_FS);
+  /* USER CODE BEGIN OTG_FS_IRQn 1 */
+
+  /* USER CODE END OTG_FS_IRQn 1 */
 }
 
 /**

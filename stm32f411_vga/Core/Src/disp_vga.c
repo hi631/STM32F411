@@ -1,77 +1,224 @@
+#include <stdio.h>
 #include <string.h>
 #include <math.h>
-#define uint8_t unsigned char
-#define uint16_t unsigned short
-#define int16_t short
-#define uint32_t unsigned int
-#define VGA_WIDTH  640
-#define VGA_HEIGHT 480
-#define MXB 82	// X方向の最大バイト数(FPとEPを追加)
-#define MYB 480	// Y方向の最大ライン数
-uint8_t vramr[MXB*MYB] __attribute__((aligned(32)));
-uint8_t vramg[MXB*MYB] __attribute__((aligned(32)));
-uint8_t vramb[MXB*MYB] __attribute__((aligned(32)));
+#include <stdlib.h> // rand, srand
+#include <time.h>
+#include "stm32f4xx_hal.h"
+#include "disp_vga.h"
 
+uint8_t vramr[MXB*MYB+VRAMEP*4] __attribute__((aligned(32)));
+uint8_t vramg[MXB*MYB+VRAMEP*4] __attribute__((aligned(32)));
+uint8_t vramb[MXB*MYB+VRAMEP*4] __attribute__((aligned(32)));
+uint8_t font_color= 7;	// COLOR Dif:7
+
+extern void wloop();
+extern void put_serial();
 unsigned char fontptn[];
 
+//---------------------------------------------
+int dumy_ena = 0;
+char dumy_prg[] =
+//"LOAD 0 1\r";
+//"10 FOR A=1 TO 10\r""20 PRINT A;\" \";\r""30 NEXT A\r""RUN\r";
+"10 X= 80: FOR Y=100 TO 300 STEP30: GOSUB 910: NEXT Y\r"
+"20 X=160: FOR Y=100 TO 300 STEP30: GOSUB 920: NEXT Y\r"
+"30 X=240: FOR Y=100 TO 300 STEP30: GOSUB 930: NEXT Y\r"
+"90 STOP\r"
+// PALETTE 8x8
+"910 PALETTE X Y \"FFFFFFFFFFFFC3C3C3C3C3C3C3C3C3C3C3C3FFFFFFFFFFFF\": RETURN\r"	// R
+"920 PALETTE X Y \"0000FF0000FF3C3CC33C3CC33C3CC33C3CC30000FF0000FF\": RETURN\r"	// G
+"930 PALETTE X Y \"FF0000FF0000C30000C30000C30000C30000FF0000FF0000\": RETURN\r"	// B
+"RUN\r";
+
+char rcvbf[128];
+uint16_t rcvwp=0, rcvrp=0;
+char put_ch(char ch){
+	if(((rcvwp+1) & 0x7f)==rcvrp) return -1;	// buf over.flow
+	else {
+		if(ch>0) {
+			rcvbf[rcvwp++] = ch; rcvwp &= 0x7f;	return 0;
+		} else
+			return -1;
+	}
+}
+char get_ch(){
+	char ch;
+	if(rcvrp==rcvwp) return 0; // No.data
+	else {
+		ch = rcvbf[rcvrp++];
+		rcvrp &= 0x7f;
+		return ch;
+	}
+}
+int dumy_kp =0;
+char dumy_key(){
+	char ch;
+	ch = 0;
+	if(dumy_ena!=0) {
+		if(dumy_prg[dumy_kp]!=0) {put_ch(dumy_prg[dumy_kp++]);}
+	    else                     {dumy_ena = 0;}
+	}
+	return ch;
+}
+
+extern void MX_USB_HOST_Process(void);
+extern char usb_key;
+char getch(){
+	char ch;
+	ch = 0;
+	while(ch==0){
+		dumy_key();
+		ch = get_ch();
+		if(ch==0) wloop(1);
+	}
+	return ch;
+}
+char kbhit(){
+	MX_USB_HOST_Process();
+	if(rcvrp==rcvwp)
+		return 0;
+	else
+		return 1;
+}
+
+int frand(){
+	return rand();
+}
+//---------------------------------------------
+extern TIM_HandleTypeDef htim2;
 void clr_vram(){
+	__HAL_TIM_SET_AUTORELOAD(&htim2, Tim2Period-1);
+	__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, CH1Pulse);
 	memset(vramr, 0x00, MXB*MYB);
 	memset(vramg, 0x00, MXB*MYB);
 	memset(vramb, 0x00, MXB*MYB);
+	srand(HAL_GetTick());	// init.rand
+}
+
+char cxp = 0;
+char cyp = 0;
+void locate(uint16_t xp, uint16_t yp) { cxp = xp; cyp = yp; }
+void DrawChar(uint16_t xp, uint16_t yp, uint8_t code, uint8_t col);
+void DrawLine(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1, uint8_t c, uint8_t wm);
+void putch(uint8_t ch){
+	DrawLine(cxp*8, cyp*CFMAX+16, (cxp+1)*8, cyp*CFMAX+16, 0, 0);
+	if(ch>=0x20) {
+		DrawChar( cxp, cyp, ch, font_color); cxp++;
+	} else {
+		if(ch==13) { cxp=0; cyp++;}
+		if(ch==8) {
+			cxp--;
+			if(cxp<0) cxp=0;
+			DrawChar(cxp,cyp,0x20,0);
+		}
+	}
+	if(cxp>=CXMAX) { cyp++; cxp=0;}
+	if(cyp>=CLMAX-1) {
+		cyp=CLMAX-2;
+		memcpy(&vramr[0], &vramr[CFMAX*MXB], (CLMAX-2)*CFMAX*MXB);
+		memcpy(&vramg[0], &vramg[CFMAX*MXB], (CLMAX-2)*CFMAX*MXB);
+		memcpy(&vramb[0], &vramb[CFMAX*MXB], (CLMAX-2)*CFMAX*MXB);
+		memset(&vramr[(CLMAX-2)*CFMAX*MXB], 0x00, CFMAX*MXB);
+		memset(&vramg[(CLMAX-2)*CFMAX*MXB], 0x00, CFMAX*MXB);
+		memset(&vramb[(CLMAX-2)*CFMAX*MXB], 0x00, CFMAX*MXB);
+	}
+	//
+	DrawLine(cxp*8, cyp*CFMAX+16, (cxp+1)*8, cyp*CFMAX+16, 7, 0);
+	//
+	put_serial(ch);
 }
 
 //----------------------------------------------------
 
-void DrawChar(int xp, int yp, char code, uint8_t col){
-	int i;
-	if(xp>=80 || yp>=30) return;	// Error
-	xp=xp+1; yp=yp*16;
-	if((col & 1)!=0)
-		for( i=0; i<8; i++){
-			vramr[(yp+i*2  )*MXB+xp] = fontptn[code*8+i];
-			vramr[(yp+i*2+1)*MXB+xp] = fontptn[code*8+i];
+uint8_t conv_sb(uint8_t *ps){
+	uint8_t hh,hl;
+	hh = (uint8_t)*ps;
+	if(hh>0x39) hh = hh - 0x37;
+	else        hh = hh - 0x30;
+	hl = (uint8_t)*(ps+1);
+	if(hl>0x39) hl = hl - 0x37;
+	else        hl = hl - 0x30;
+	return (hh << 4) | hl;
+}
+void FillPal(uint16_t x, uint16_t y, uint8_t* pda, uint8_t pdl, uint8_t wm){
+	uint16_t vtadr, pdps, i;
+	uint16_t bpos, bofs, bptn, p16r,p16g,p16b;
+	uint16_t *vramp;
+	pdps = pdl/3; // Def:16(以外も可)
+	if(x>=(VGA_WIDTH-8) || y>=(VGA_HEIGHT-pdps/2)) return ;
+	bpos = (x >> 3)+ MXBOFS; bofs = (x & 0x07); vtadr = y*MXB+bpos;	// VRAM上の先頭位置
+	//pdag = pdar + pdps; pdab = pdag + pdps;					// パターンの位置
+		bptn = ~(0xff << (8-bofs)); bptn = (bptn << 8) | (bptn >> 8);
+		for( i=0; i<pdps/2; i++){
+			p16r = conv_sb(pda) << (8-bofs); pda += 2; p16r = (p16r << 8) | (p16r >> 8);
+			p16g = conv_sb(pda) << (8-bofs); pda += 2; p16g = (p16g << 8) | (p16g >> 8);
+			p16b = conv_sb(pda) << (8-bofs); pda += 2; p16b = (p16b << 8) | (p16b >> 8);
+			if(wm!=1){	// or書き込み
+				vramp=(uint16_t *)&vramr[vtadr+i*MXB]; *vramp = (*vramp & bptn) | p16r;
+				vramp=(uint16_t *)&vramg[vtadr+i*MXB]; *vramp = (*vramp & bptn) | p16g;
+				vramp=(uint16_t *)&vramb[vtadr+i*MXB]; *vramp = (*vramp & bptn) | p16b;
+			} else{		// xor書き込み
+				vramp=(uint16_t *)&vramr[vtadr+i*MXB]; *vramp ^= p16r;
+				vramp=(uint16_t *)&vramg[vtadr+i*MXB]; *vramp ^= p16g;
+				vramp=(uint16_t *)&vramb[vtadr+i*MXB]; *vramp ^= p16b;
+			}
 		}
-	if((col & 2)!=0)
-		for( i=0; i<8; i++){
-			vramg[(yp+i*2  )*MXB+xp] = fontptn[code*8+i];
-			vramg[(yp+i*2+1)*MXB+xp] = fontptn[code*8+i];
-		}
-	if((col & 4)!=0)
-		for( i=0; i<8; i++){
-			vramb[(yp+i*2  )*MXB+xp] = fontptn[code*8+i];
-			vramb[(yp+i*2+1)*MXB+xp] = fontptn[code*8+i];
-		}
-	if(col==0)
-		for( i=0; i<8; i++){
-			vramr[(yp+i*2)*MXB+xp] = 0; vramr[(yp+i*2+1)*MXB+xp] = 0;
-			vramg[(yp+i*2)*MXB+xp] = 0; vramg[(yp+i*2+1)*MXB+xp] = 0;
-			vramb[(yp+i*2)*MXB+xp] = 0; vramb[(yp+i*2+1)*MXB+xp] = 0;
-		}
-	//
-	//if(yp==79) {	// Dot639 over
-	//	vramr[yp*MXB+MXB-1] &= 0xf7; vramr[yp*MXB+MXB-1] &= 0xfe;
-	//	vramg[yp*MXB+MXB-1] &= 0xf7; vramg[yp*MXB+MXB-1] &= 0xfe;
-	//	vramb[yp*MXB+MXB-1] &= 0xf7; vramb[yp*MXB+MXB-1] &= 0xfe;
 	//}
 }
+void DrawChar(uint16_t xp, uint16_t yp, uint8_t code, uint8_t col){
+	int i,j;
+	if(xp>=CXMAX || yp>=CLMAX) return;	// Error
+	xp=xp+MXBOFS; yp=yp*CFMAX; col=col & 0x77;	// col:xbbbxfff
+	for( i=0; i<8; i++){
+	  for( j=0; j<2; j++){
+		switch(col & 0x44){	// R
+		  case 0x00: vramr[(yp+i*2+j)*MXB+xp] = 0x00; break;
+		  case 0x04: vramr[(yp+i*2+j)*MXB+xp] = fontptn[code*8+i]; break;
+		  case 0x40: vramr[(yp+i*2+j)*MXB+xp] = ~fontptn[code*8+i]; break;
+		  case 0x44: vramr[(yp+i*2+j)*MXB+xp] = 0xff; break;
+		}
+		switch(col & 0x22){	// G
+		  case 0x00: vramg[(yp+i*2+j)*MXB+xp] = 0x00; break;
+		  case 0x02: vramg[(yp+i*2+j)*MXB+xp] = fontptn[code*8+i]; break;
+		  case 0x20: vramg[(yp+i*2+j)*MXB+xp] = ~fontptn[code*8+i]; break;
+		  case 0x22: vramg[(yp+i*2+j)*MXB+xp] = 0xff; break;
+		}
+		switch(col & 0x11){	// B
+		  case 0x00: vramb[(yp+i*2+j)*MXB+xp] = 0x00; break;
+		  case 0x01: vramb[(yp+i*2+j)*MXB+xp] = fontptn[code*8+i]; break;
+		  case 0x10: vramb[(yp+i*2+j)*MXB+xp] = ~fontptn[code*8+i]; break;
+		  case 0x11: vramb[(yp+i*2+j)*MXB+xp] = 0xff; break;
+		}
+	  }
+	}
+}
+
 void DrawStr(uint16_t xp, uint16_t yp, char msg[], uint8_t col){
 	int mp = 0;
 	while(msg[mp]!=0) DrawChar(xp++,yp,msg[mp++], col);
 }
 
-void DrawPixel(int16_t x, int16_t y, uint8_t col) {
+void DrawPixel(uint16_t x, uint16_t y, uint8_t col, uint8_t wm) {
 	uint8_t bytp,bitp;
 	if(x>=VGA_WIDTH || y>=VGA_HEIGHT) return;
-	bytp = (x >> 3)+1; bitp = 0x80 >> (x & 7);
-	if((col & 1)!=0) { vramr[y*MXB+bytp] |= bitp; }
-	else 		     { vramr[y*MXB+bytp] &= ~bitp;}
-	if((col & 2)!=0) { vramg[y*MXB+bytp] |= bitp; }
-	else             { vramg[y*MXB+bytp] &= ~bitp;}
-	if((col & 4)!=0) { vramb[y*MXB+bytp] |= bitp; }
-	else             { vramb[y*MXB+bytp] &= ~bitp;}
+	bytp = (x >> 3)+MXBOFS; bitp = 0x80 >> (x & 7);
+	if(wm!=1){
+		if((col & 4)!=0) { vramr[y*MXB+bytp] |= bitp; }
+		else 		     { vramr[y*MXB+bytp] &= ~bitp;}
+		if((col & 2)!=0) { vramg[y*MXB+bytp] |= bitp; }
+		else             { vramg[y*MXB+bytp] &= ~bitp;}
+		if((col & 1)!=0) { vramb[y*MXB+bytp] |= bitp; }
+		else             { vramb[y*MXB+bytp] &= ~bitp;}
+	} else {
+		if((col & 4)!=0) { vramr[y*MXB+bytp] ^= bitp; }
+		if((col & 2)!=0) { vramg[y*MXB+bytp] ^= bitp; }
+		if((col & 1)!=0) { vramb[y*MXB+bytp] ^= bitp; }
+
+
+	}
 }
 
-void DrawLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint8_t c) {
+void DrawLine(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1, uint8_t col, uint8_t wm) {
 	int16_t dx, dy, sx, sy, err, e2, i, tmp;
 
 	dx = (x0 < x1) ? (x1 - x0) : (x0 - x1);
@@ -83,19 +230,19 @@ void DrawLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint8_t c) {
 	if (dx == 0) {
 		if (y1 < y0) {tmp = y1;y1 = y0;y0 = tmp;}
 		if (x1 < x0) {tmp = x1;x1 = x0;x0 = tmp;}
-		for (i = y0; i <= y1; i++) {DrawPixel(x0, i, c);}	/* Vertical line */
+		for (i = y0; i <= y1; i++) {DrawPixel(x0, i, col, wm);}	/* Vertical line */
 		return;
 	}
 
 	if (dy == 0) {
 		if (y1 < y0) {tmp = y1;y1 = y0;y0 = tmp;}
 		if (x1 < x0) {tmp = x1;x1 = x0;x0 = tmp;}
-		for (i = x0; i <= x1; i++) {DrawPixel(i, y0, c);}	/* Horizontal line */
+		for (i = x0; i <= x1; i++) {DrawPixel(i, y0, col, wm);}	/* Horizontal line */
 		return;
 	}
 
 	while (1) {
-		DrawPixel(x0, y0, c);
+		DrawPixel(x0, y0, col, wm);
 		if (x0 == x1 && y0 == y1) {	break;}
 		e2 = err;
 		if (e2 > -dx) {err -= dy;x0 += sx;}
@@ -103,49 +250,135 @@ void DrawLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint8_t c) {
 	}
 }
 
-void DrawRect(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1, uint8_t col) {
+void DrawRect(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1, uint8_t col, uint8_t wm) {
 
-	DrawLine(x0,y0,x1,y0,col);
-	DrawLine(x1,y0,x1,y1,col);
-	DrawLine(x1,y1,x0,y1,col);
-	DrawLine(x0,y1,x0,y0,col);
+	DrawLine(x0,y0,x1,y0,col,wm);
+	DrawLine(x1,y0,x1,y1,col,wm);
+	DrawLine(x1,y1,x0,y1,col,wm);
+	DrawLine(x0,y1,x0,y0,col,wm);
 }
 
-void FillRect(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2, uint8_t col) {
+void FillRect(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2, uint8_t col, uint8_t wm) {
     if((x1 >= VGA_WIDTH) || (y1 >= VGA_HEIGHT)) return;	    // clipping
     if(x2 >= VGA_WIDTH) x2 = VGA_WIDTH-1;
     if(y2 >= VGA_HEIGHT) y2 = VGA_HEIGHT-1;
     for(int yy = y1; yy <= y2; yy++) {
-    	DrawLine(x1,yy,x2,yy,col);
+    	DrawLine(x1,yy,x2,yy,col,wm);
     }
 }
 
-void DrawCircle(uint16_t x, uint16_t y, uint16_t r, uint8_t col) {
+void DrawCircle(uint16_t x, uint16_t y, uint16_t r, uint8_t col, uint8_t wm) {
 	int16_t	x1, y1,a;
 	for (a = 0; a < 360; a++) {
 		x1 = r * cos(a);
 		y1 = r * sin(a);
-		DrawPixel( x1+x,y1+y,col);
+		DrawPixel( x1+x,y1+y,col, wm);
 	}
 }
-void FillCircle(uint16_t x, uint16_t y, uint16_t r, uint8_t col) {
+void FillCircle(uint16_t x, uint16_t y, uint16_t r, uint8_t col, uint8_t wm) {
 	int16_t		x1,y1;
 	for (y1 = 0; y1 < r; y1++) {
 		x1 = sqrt(r*r-y1*y1);
-		DrawLine(x-x1,y-y1,x+x1,y-y1 ,col);
-		DrawLine(x-x1,y+y1,x+x1,y+y1 ,col);
+		DrawLine(x-x1,y-y1,x+x1,y-y1 ,col, wm);
+		DrawLine(x-x1,y+y1,x+x1,y+y1 ,col, wm);
 	}
 }
-void vga_test(){
-	uint8_t col = 1;
-	int i,j;
-	FillRect(270,190,370,290,col);
-	FillCircle(320,240,50,0);
-	for( i=0;i<40; i++) {
-		j=i*5;
-		DrawRect(0+j,0+j,320-j,240-j,1);
-		DrawRect(320+j,240+j,639-j,479-j,1);
+//----------------------------------------------------
+
+void cls(uint16_t dm1,uint16_t dm2){
+	clr_vram(); cxp=0; cyp=0;
+	if(dm1>0)	__HAL_TIM_SET_AUTORELOAD(&htim2, dm1-1);
+	if(dm2>0)	__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, dm2);
+	if(dm1>0 || dm2>0) DrawRect(0, 0, VGA_WIDTH-1, VGA_HEIGHT-1, 1, 0);
+}
+void pset(uint16_t xp, uint16_t yp, uint8_t col, uint8_t wm){ DrawPixel( xp, yp, col, wm);}
+void line(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1, uint8_t col, uint8_t wm){
+	DrawLine( x0, y0, x1, y1, col, wm); }
+void rect(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1, uint8_t col, uint8_t bf, uint8_t wm){
+	if(bf==0) DrawRect( x0, y0, x1, y1, col, wm);
+	else      FillRect( x0, y0, x1, y1, col, wm);
+}
+void circle(uint16_t x, uint16_t y, uint16_t r, uint8_t col, uint8_t bf, uint8_t wm){
+	if(bf==0) DrawCircle( x, y, r, col, wm);
+	else      FillCircle( x, y, r, col, wm);
+}
+void palette(uint16_t x, uint16_t y, uint8_t* pda, uint8_t pdl, uint8_t wm){
+	FillPal( x, y, pda, pdl, wm);
+}
+//---------------------------------------------
+
+#define SECTOR_7    0x08060000	// データを書き込むセクタの先頭アドレス（Sector 7）
+#define SECTOR_7_ML 4096*24		// ワークとして利用するVRAM 96KB(98304)
+
+void Flash_Write(uint32_t Fadr, uint32_t *Madr, uint16_t DataLength) {
+    FLASH_EraseInitTypeDef EraseInitStruct;
+    uint32_t SectorError;
+
+    HAL_FLASH_Unlock();	// ロック解除
+    // セクタの消去 (Sector 7)
+    EraseInitStruct.TypeErase     = FLASH_TYPEERASE_SECTORS;
+    EraseInitStruct.Sector        = FLASH_SECTOR_7;
+    EraseInitStruct.NbSectors     = 1;
+    EraseInitStruct.VoltageRange  = FLASH_VOLTAGE_RANGE_3; // 3.3V
+    if (HAL_FLASHEx_Erase(&EraseInitStruct, &SectorError) != HAL_OK) {
+        HAL_FLASH_Lock(); return; }	// エラー処理
+
+    // フラッシュへの書き込み (例はワード(4Byte)単位)
+    for (int i = 0; i < DataLength; i++) {
+    	uint32_t Data = *Madr;
+        if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, Fadr, Data) == HAL_OK) {
+            Fadr += 4; Madr += 1;	// Fadrは番地なのでByte単位、MadrはWordのポインタなのでWord単位
+        } else { break; }	// エラー処理
+    }
+    HAL_FLASH_Lock();	// 再ロック
+}
+
+void bas_load(short bno, uint32_t *lbuf, short bufl){
+	uint32_t loadadr;
+	loadadr = SECTOR_7 + bufl*bno;
+	for (int i = 0; i < bufl/4; i++) {
+		*(uint32_t *)lbuf = *(__IO uint32_t*)loadadr;
+		lbuf += 1; loadadr += 4;	// lbufはWordのポインタ、loadadrは番地
 	}
+
+}
+void clr_vram();
+void bas_save(short bno, uint32_t *lbuf, short bufl){
+	uint32_t saveadr;
+	uint32_t loadadr;
+	loadadr = SECTOR_7;
+	saveadr = (uint32_t)&vramr[0];
+	// SECTOR_7をVRAM(96KB)にコピーする
+	for (int i = 0; i < SECTOR_7_ML/4; i++) {
+		*(uint32_t *)saveadr = *(__IO uint32_t*)loadadr;
+		saveadr += 4; loadadr += 4;
+	}
+	// コピーしたデータに格納プログラムを上書き
+	saveadr = (uint32_t)&vramr[0] + bufl*bno;
+	for (int i = 0; i < bufl/4; i++) {
+		*(uint32_t *)saveadr = *(__IO uint32_t*)lbuf;
+		saveadr += 4; lbuf += 1;
+	}
+	// SECTOR_7にVRAM(96KB)を書き戻す
+	saveadr = SECTOR_7 + bufl*bno;
+	Flash_Write( SECTOR_7, (uint32_t *)vramr, SECTOR_7_ML/4);
+	// 使ったVRAMをクリア
+	clr_vram();
+}
+//-----------------------------------------------------------
+void test_vga(){
+	DrawRect(0, 0, VGA_WIDTH-1, VGA_HEIGHT-1, 1, 0);
+	  for(int i=0; i<40; i++)
+		  FillRect(100+i*10,0,100+i*10+9,479,(i%6)+1, 0);
+	  char cbuf[128];
+	  for(int y=1; y<26; y++){
+		  sprintf(cbuf, "%02d.ABCDEFG", y);
+		  DrawStr(y,y,"          ",0);DrawStr(y,y,cbuf,(y%6)+1);
+	  }
+	DrawStr( 0, 0,"<00,00", 0x70);
+	DrawStr(74, 0,"79,00>", 0x40);
+	DrawStr( 0,25,"<00,25", 0x20);
+	DrawStr(74,25,"79,25>", 0x10);
 }
 //----------------------------------------------------
 unsigned char fontptn[] = {

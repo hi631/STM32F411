@@ -18,11 +18,16 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "usb_host.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
 #include <string.h>
+#include "usbh_hid.h"
+#include "usbh_hid_keybd.h"
+#include "usbh_core.h"
+#include "usbh_hid_keybd.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -52,7 +57,7 @@ DMA_HandleTypeDef hdma_tim1_ch1;
 DMA_HandleTypeDef hdma_tim1_ch2;
 DMA_HandleTypeDef hdma_tim1_ch3;
 
-HCD_HandleTypeDef hhcd_USB_OTG_FS;
+UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
 
@@ -68,15 +73,22 @@ static void MX_TIM2_Init(void);
 static void MX_SPI4_Init(void);
 static void MX_SPI5_Init(void);
 static void MX_TIM3_Init(void);
-static void MX_USB_OTG_FS_HCD_Init(void);
+static void MX_USART1_UART_Init(void);
+void MX_USB_HOST_Process(void);
+
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-extern void set_dotbf();
+extern USBH_HandleTypeDef hUsbHostFS;
+extern void MX_USB_HOST_Process(void);
+extern void basic();
+extern void put_ch();
 extern void clr_vram();
+extern void test_vga();
+extern void putch();
 extern void DrawChar();
 extern void DrawStr();
 extern void DrawLine();
@@ -85,11 +97,78 @@ extern void FillRect();
 extern void DrawCircle();
 extern void FillCircle();
 extern void FillCircle();
-extern uint8_t dotbf0[120];
-extern uint8_t dotbf1[120];
-extern uint8_t vramr[80*480];
-extern uint8_t vramg[80*480];
-extern uint8_t vramb[80*480];
+//char usb_key;
+
+int wct = 0;
+void wloop(int dly){
+	HAL_Delay(dly);
+    MX_USB_HOST_Process();
+	if(wct++>(200/dly)){
+		wct=0;
+		HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13); // PC13(LED)への出力を反転
+	}
+}
+// USB HID Usage Tables(basicの為に少し弄ってる)
+const uint8_t hid_to_ascii_us[] = {
+    0, 0, 0, 0, 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l',
+    'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
+    '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '\r', 0x1B, '\b', '\t',
+    ' ', '-', '^', '[', ']', '\\', 0, ';', ':', '`', ',', '.', '/'
+};
+// シフトが押された場合のテーブル
+const uint8_t hid_to_ascii_us_shift[] = {
+    0, 0, 0, 0, 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L',
+    'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+    '!', '"', '#', '$', '%', '&', '\'', '(', ')', ')', '\r', 0x1B, '\b', '\t',
+    ' ', '=', '~', '{', '}', '|', 0, '+', '"', '~', '<', '>', '?'
+};
+
+char HID_To_ASCII(uint8_t scancode, uint8_t shift) {
+    if (scancode >= sizeof(hid_to_ascii_us)) return 0; // 範囲外
+    if (shift) { return hid_to_ascii_us_shift[scancode];}
+    else       { return hid_to_ascii_us[scancode]; }
+}
+
+// キーボードのレポート構造体（定義されていない場合）
+typedef struct _HID_KEYBD_Info{
+  uint8_t modifier;
+  uint8_t reserved;
+  uint8_t keys[6];
+} HID_KEYBD_Info_Typedef;
+extern USBH_HandleTypeDef hUsbHostFS;
+// HID コールバック関数
+void USBH_HID_EventCallback(USBH_HandleTypeDef *phost){
+    //HID_HandleTypeDef *HID_Handle = (HID_HandleTypeDef *) phost->pActiveClass->pData;
+    HID_KEYBD_Info_TypeDef *kbd_info;
+    // デバイスがキーボードか確認
+    if (USBH_HID_GetDeviceType(phost) == HID_KEYBOARD) {
+        kbd_info = USBH_HID_GetKeybdInfo(phost);	// データをキーボード構造体にキャスト
+        if (kbd_info != NULL) {
+            // キーボードのキー押下データ(kbd_info->keys[0...5])を利用
+        	uint8_t key = kbd_info->keys[0]; // 押されたキー
+        	uint8_t shift = kbd_info->lshift || kbd_info->rshift;
+        	uint8_t ctrl = kbd_info->lctrl || kbd_info->rctrl;
+        	uint8_t asch = HID_To_ASCII(key, shift);
+        	if(ctrl==1) asch = asch & 0x1f;
+        	put_ch(asch);
+        }
+    }
+}
+
+void put_serial(char ch){
+	uint8_t txdt;
+	txdt = ch;
+	HAL_UART_Transmit(&huart1, &txdt, 1, 10);
+}
+uint8_t rx_data;
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+    if (huart->Instance == USART1) {
+    	put_ch(rx_data);
+        //HAL_UART_Transmit(&huart1, &rx_data, 1, 10);	// 1バイト送信（エコーバック）
+        HAL_UART_Receive_IT(&huart1, &rx_data, 1);		// 次の1バイト受信のために再度割り込みを有効にする
+    }
+}
 /* USER CODE END 0 */
 
 /**
@@ -127,7 +206,8 @@ int main(void)
   MX_SPI4_Init();
   MX_SPI5_Init();
   MX_TIM3_Init();
-  MX_USB_OTG_FS_HCD_Init();
+  MX_USB_HOST_Init();
+  MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
   /* USER CODE END 2 */
 
@@ -139,37 +219,26 @@ int main(void)
   __HAL_SPI_ENABLE(&hspi4);	// (PA1)
   __HAL_SPI_ENABLE(&hspi5);	// (PB8)
   // タイマースタート
-  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);	// (PA8)
-  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);	// (PA9)
-  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);	// (PA10)
-  HAL_TIM_PWM_Start_IT(&htim2, TIM_CHANNEL_1);	// T1Gate(PA0)
-  HAL_TIM_PWM_Start_IT(&htim2, TIM_CHANNEL_2);	// Hsync(PB3)
+  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);		// (PA8)
+  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);		// (PA9)
+  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);		// (PA10)
+  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);		// T1Gate(PA0)
+  HAL_TIM_PWM_Start_IT(&htim2, TIM_CHANNEL_2);	// (PB3)
+  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);		// Hsync(PA6)
   // Hsyncより作成									// Vsync(PB1)
-  HAL_TIM_PWM_Start_IT(&htim3, TIM_CHANNEL_1);	// (PA6)
+
+  // シリアル初期化(１バイト受信で割り込み発生) TX:(PA15) RX:(PA10)
+  HAL_UART_Receive_IT(&huart1, &rx_data, 1);
 
   clr_vram();
-  for(int i=0; i<40; i++)
-    FillRect(100+i*10,0,100+i*10+9,479,(i%6)+1);
-  int x,y;
-  for(int i=0; i<10; i++){
-	  x=140+i*24;y=10+i*40; FillRect(x,y,x+110,y+110,(i%6)+1);
-	  x=400+i*20;y=80+i*40; FillCircle(x,y,80,(i%6)+1);
-  }
-  char cbuf[128];
-  for(int x=0; x<30; x++){
-	  sprintf(cbuf, "%02d.ABCDEFG", x+1);
-	  DrawStr(x,x,"          ",0);	// 文字エリアをクリア
-	  DrawStr(x,x,cbuf,(x%6)+1);	// 文字ORで書いている
-  }
-  DrawStr(74, 0,"79,00>", 2);
-  DrawStr( 0,29,"<00,29", 4);
-  DrawStr(74,29,"79,29>", 7);
+  test_vga();	// 不用なら消す
 
   while (1)
   {
-	  HAL_Delay(1000);
-	  HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13); // PC13(LED)への出力を反転
+	  //basic();			// basicを呼びだす、wloopは不用
+	  wloop(1);		// 1ms待ち、LED PC13を点滅
     /* USER CODE END WHILE */
+    MX_USB_HOST_Process();
 
     /* USER CODE BEGIN 3 */
   }
@@ -480,7 +549,7 @@ static void MX_TIM2_Init(void)
     Error_Handler();
   }
   sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 2592;
+  sConfigOC.Pulse = 2598;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
   if (HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
@@ -554,33 +623,35 @@ static void MX_TIM3_Init(void)
 }
 
 /**
-  * @brief USB_OTG_FS Initialization Function
+  * @brief USART1 Initialization Function
   * @param None
   * @retval None
   */
-static void MX_USB_OTG_FS_HCD_Init(void)
+static void MX_USART1_UART_Init(void)
 {
 
-  /* USER CODE BEGIN USB_OTG_FS_Init 0 */
+  /* USER CODE BEGIN USART1_Init 0 */
 
-  /* USER CODE END USB_OTG_FS_Init 0 */
+  /* USER CODE END USART1_Init 0 */
 
-  /* USER CODE BEGIN USB_OTG_FS_Init 1 */
+  /* USER CODE BEGIN USART1_Init 1 */
 
-  /* USER CODE END USB_OTG_FS_Init 1 */
-  hhcd_USB_OTG_FS.Instance = USB_OTG_FS;
-  hhcd_USB_OTG_FS.Init.Host_channels = 8;
-  hhcd_USB_OTG_FS.Init.speed = HCD_SPEED_FULL;
-  hhcd_USB_OTG_FS.Init.dma_enable = DISABLE;
-  hhcd_USB_OTG_FS.Init.phy_itface = HCD_PHY_EMBEDDED;
-  hhcd_USB_OTG_FS.Init.Sof_enable = DISABLE;
-  if (HAL_HCD_Init(&hhcd_USB_OTG_FS) != HAL_OK)
+  /* USER CODE END USART1_Init 1 */
+  huart1.Instance = USART1;
+  huart1.Init.BaudRate = 115200;
+  huart1.Init.WordLength = UART_WORDLENGTH_8B;
+  huart1.Init.StopBits = UART_STOPBITS_1;
+  huart1.Init.Parity = UART_PARITY_NONE;
+  huart1.Init.Mode = UART_MODE_TX_RX;
+  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart1) != HAL_OK)
   {
     Error_Handler();
   }
-  /* USER CODE BEGIN USB_OTG_FS_Init 2 */
+  /* USER CODE BEGIN USART1_Init 2 */
 
-  /* USER CODE END USB_OTG_FS_Init 2 */
+  /* USER CODE END USART1_Init 2 */
 
 }
 
@@ -660,14 +731,6 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-
-//void HAL_TIM_PWM_PulseFinishedCallback(TIM_HandleTypeDef *htim){
-//  if (htim->Instance == TIM1) {
-//    // 転送完了時の処理（例：次のバッファを準備する）
-//  }
-//}
-// DMAが半分完了した時に呼ばれるコールバック
-//void HAL_TIM_PWM_PulseFinishedHalfCpltCallback(TIM_HandleTypeDef *htim){}
 
 /* USER CODE END 4 */
 
